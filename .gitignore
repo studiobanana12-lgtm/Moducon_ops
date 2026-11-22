@@ -1,0 +1,7 @@
+# Local dev preview, Supabase CLI temp & OS files
+dev/
+supabase/.temp/
+.DS_Store
+Thumbs.db
+.env
+.env.local
