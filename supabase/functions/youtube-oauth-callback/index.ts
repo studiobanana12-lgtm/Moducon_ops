@@ -91,7 +91,16 @@ Deno.serve(async (req) => {
     const avatarUrl = snippet.thumbnails?.default?.url || null;
     const nowIso = new Date().toISOString();
 
-    // 3. Upsert social_channels metadata
+    // 3. Encrypt tokens BEFORE marking channel connected (prevents tokenless connected state)
+    const accessTokenEnc = await encryptToken(tokenData.access_token);
+    const refreshTokenEnc = tokenData.refresh_token
+      ? await encryptToken(tokenData.refresh_token)
+      : null;
+    const tokenExpiresAt = tokenData.expires_in
+      ? new Date(Date.now() + Number(tokenData.expires_in) * 1000).toISOString()
+      : null;
+
+    // 4. Upsert social_channels metadata
     const { data: savedChannel, error: chErr } = await adminClient
       .from("social_channels")
       .upsert(
@@ -115,17 +124,9 @@ Deno.serve(async (req) => {
       .select("id")
       .single();
 
-    if (chErr || !savedChannel) throw chErr || new Error("채널 저장 실패");
+    if (chErr || !savedChannel) throw new Error(chErr?.message || "채널 저장 실패");
 
-    // 4. Encrypt and store tokens in server-only table
-    const accessTokenEnc = await encryptToken(tokenData.access_token);
-    const refreshTokenEnc = tokenData.refresh_token
-      ? await encryptToken(tokenData.refresh_token)
-      : null;
-    const tokenExpiresAt = tokenData.expires_in
-      ? new Date(Date.now() + Number(tokenData.expires_in) * 1000).toISOString()
-      : null;
-
+    // 5. Store encrypted tokens in server-only table
     const tokenPayload: Record<string, unknown> = {
       channel_id: savedChannel.id,
       access_token_enc: accessTokenEnc,
@@ -138,9 +139,15 @@ Deno.serve(async (req) => {
     const { error: tokErr } = await adminClient
       .from("social_channel_tokens")
       .upsert(tokenPayload, { onConflict: "channel_id" });
-    if (tokErr) throw tokErr;
+    if (tokErr) {
+      await adminClient
+        .from("social_channels")
+        .update({ status: "pending", updated_at: new Date().toISOString() })
+        .eq("id", savedChannel.id);
+      throw new Error("토큰 저장 실패: " + tokErr.message);
+    }
 
-    // 5. Write audit log
+    // 6. Write audit log
     const { data: actorMem } = await adminClient
       .from("memberships")
       .select("role")
@@ -169,10 +176,16 @@ Deno.serve(async (req) => {
       platform: "youtube"
     });
   } catch (err) {
+    const msg =
+      err instanceof Error
+        ? err.message
+        : typeof err === "object" && err && "message" in err
+        ? String((err as { message: unknown }).message)
+        : String(err);
     return buildRedirect(stateRow.return_url, {
       tab: "channels",
       oauth: "error",
-      reason: err instanceof Error ? err.message : String(err)
+      reason: msg
     });
   }
 });

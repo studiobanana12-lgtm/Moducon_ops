@@ -79,6 +79,7 @@
     videoStatusFilter: "all",
     feedSort: "recent",
     syncingChannelId: null,
+    lastInviteResult: null,
     error: "",
     recoveryMode: false,
     oauthNoticeHandled: false
@@ -653,7 +654,11 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "초대 실패");
       document.getElementById("inviteEmail").value = "";
-      showToast(`${email}로 고객 초대 메일을 발송했습니다.`);
+      state.lastInviteResult = data.invite_link
+        ? { email, organization: data.organization, link: data.invite_link, message: data.message }
+        : null;
+      render();
+      showToast(data.message || `${email}로 고객 초대 메일을 발송했습니다.`);
     } catch (err) {
       showToast("초대 실패: " + err.message, "error");
     } finally {
@@ -1254,8 +1259,20 @@
                <label>고객 이메일
                  <input id="inviteEmail" type="email" required placeholder="client@company.com">
                </label>
-               <button id="inviteButton" class="primary wide">초대 메일 발송</button>
-             </form>`
+               <button id="inviteButton" class="primary wide">초대 메일 발송 (또는 초대 링크 생성)</button>
+             </form>
+             ${
+               state.lastInviteResult?.link
+                 ? `<div class="safety-box" style="margin-top:14px">
+                      <b>${esc(state.lastInviteResult.message)}</b>
+                      <p class="muted" style="margin:6px 0">아래 1회용 초대 링크를 복사해서 고객에게 카카오톡으로 바로 보내주세요:</p>
+                      <input type="text" readonly value="${esc(state.lastInviteResult.link)}" id="generatedInviteLink" style="font-size:12px;background:#fff">
+                      <div class="actions">
+                        <button type="button" class="primary" id="copyGeneratedInviteBtn">초대 링크 복사하기</button>
+                      </div>
+                    </div>`
+                 : ""
+             }`
           : ""
       }
     `);
@@ -1836,6 +1853,17 @@
 
     document.getElementById("createCustomerForm")?.addEventListener("submit", createCustomer);
     document.getElementById("inviteForm")?.addEventListener("submit", inviteCustomer);
+    document.getElementById("copyGeneratedInviteBtn")?.addEventListener("click", async () => {
+      const link = state.lastInviteResult?.link;
+      if (!link) return;
+      try {
+        await navigator.clipboard.writeText(link);
+        showToast("초대 링크를 복사했습니다! 카톡에 붙여넣어 보내세요.");
+      } catch {
+        document.getElementById("generatedInviteLink")?.select();
+        showToast("링크를 선택했습니다. Ctrl+C로 복사해 주세요.");
+      }
+    });
     document.getElementById("uploadVideoForm")?.addEventListener("submit", uploadVideo);
     document.getElementById("scheduleForm")?.addEventListener("submit", saveSchedule);
     document.getElementById("kakaoForm")?.addEventListener("submit", saveKakao);

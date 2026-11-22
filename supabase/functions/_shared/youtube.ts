@@ -31,8 +31,11 @@ export async function getValidYouTubeAccessToken(
     .eq("channel_id", channelId)
     .maybeSingle();
 
-  if (tokErr || !tok) {
-    throw new Error("저장된 인증 토큰이 없습니다. 채널을 다시 연결해 주세요.");
+  if (tokErr) {
+    throw new Error("토큰 조회 DB 오류: " + tokErr.message);
+  }
+  if (!tok) {
+    throw new Error("저장된 인증 토큰이 없습니다. SNS 연동 탭에서 연결 해제 후 다시 승인해 주세요.");
   }
 
   const expiresMs = tok.token_expires_at ? new Date(tok.token_expires_at).getTime() : 0;

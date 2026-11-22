@@ -636,7 +636,8 @@ hr {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: #fee2e2;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
   color: #dc2626;
   display: flex;
   align-items: center;
